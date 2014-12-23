@@ -55,13 +55,23 @@ run(Config, FirstFiles, RestFiles, CompileFn) ->
             compile_queue(Config, Pids, RestFiles)
     end.
 
-run(Config, FirstFiles, SourceDir, SourceExt, TargetDir, TargetExt,
+
+run(Config, FirstFiles, SourceDir, SourceExt, TargetDir, TargetExtOrFn,
     Compile3Fn) ->
-    run(Config, FirstFiles, SourceDir, SourceExt, TargetDir, TargetExt,
+    run(Config, FirstFiles, SourceDir, SourceExt, TargetDir, TargetExtOrFn,
         Compile3Fn, [check_last_mod]).
 
-run(Config, FirstFiles, SourceDir, SourceExt, TargetDir, TargetExt,
+run(Config, FirstFiles, SourceDir, SourceExt, TargetDir, TargetExtOrFn,
     Compile3Fn, Opts) ->
+    TargetNameFn =
+        if is_list(TargetExtOrFn) ->
+                fun(FileName) ->
+                        filename:basename(FileName, SourceExt) ++ TargetExtOrFn
+                end;
+           is_function(TargetExtOrFn, 1) ->
+                TargetExtOrFn
+        end,
+
     %% Convert simple extension to proper regex
     SourceExtRe = "^[^._].*\\" ++ SourceExt ++ [$$],
 
@@ -77,8 +87,7 @@ run(Config, FirstFiles, SourceDir, SourceExt, TargetDir, TargetExt,
 
     run(Config, FirstFiles, RestFiles,
         fun(S, C) ->
-                Target = target_file(S, SourceDir, SourceExt,
-                                     TargetDir, TargetExt),
+                Target = target_file(S, SourceDir, TargetDir, TargetNameFn),
                 simple_compile_wrapper(S, Target, Compile3Fn, C, CheckLastMod)
         end).
 
@@ -103,9 +112,10 @@ simple_compile_wrapper(Source, Target, Compile3Fn, Config, true) ->
             skipped
     end.
 
-target_file(SourceFile, SourceDir, SourceExt, TargetDir, TargetExt) ->
+target_file(SourceFile, SourceDir, TargetDir, TargetNameFn) ->
     BaseFile = remove_common_path(SourceFile, SourceDir),
-    filename:join([TargetDir, filename:basename(BaseFile, SourceExt) ++ TargetExt]).
+    TargetBase = TargetNameFn(filename:basename(BaseFile)),
+    filename:join([TargetDir, TargetBase]).
 
 
 remove_common_path(Fname, Path) ->

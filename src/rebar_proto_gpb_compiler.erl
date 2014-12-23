@@ -42,29 +42,30 @@
 key() ->
     gpb.
 
-proto_compile(Config, _AppFile, ProtoFiles) ->
+proto_compile(Config, _AppFile, _ProtoFiles) ->
     %% Check for gpb library -- if it's not present, fail
     %% since we have.proto files that need building
     case gpb_is_present() of
         true ->
-            UserGpbOpts = user_gpb_opts(Config),
-            lists:foreach(
-              fun(ProtoFile) ->
-                      GpbOpts = UserGpbOpts ++ default_dest_opts()
-                          ++ default_include_opts(ProtoFile),
-
-                      case needs_compile(ProtoFile, GpbOpts) of
-                          true ->
-                              compile_gpb(ProtoFile, GpbOpts);
-                          false ->
-                              ok
-                      end
-              end,
-              ProtoFiles);
+            GpbOpts = user_gpb_opts(Config),
+            rebar_base_compiler:run(Config, [],
+                                    "src", ".proto",
+                                    "src", target_filename_fn(GpbOpts),
+                                    fun compile_gpb/3,
+                                    [{check_last_mod, true}]);
         false ->
             ?ERROR("The gpb library is not present in code path!\n", []),
             ?FAIL
     end.
+
+target_filename_fn(GpbOpts) ->
+    ModulePrefix = proplists:get_value(module_name_prefix, GpbOpts, ""),
+    ModuleSuffix = proplists:get_value(module_name_suffix, GpbOpts, ""),
+    fun(ProtoFileName) ->
+            Base = filename:basename(ProtoFileName, ".proto"),
+            ModulePrefix ++ Base ++ ModuleSuffix ++ ".erl"
+    end.
+
 
 proto_clean(Config, _AppFile, ProtoFiles) ->
     GpbOpts = user_gpb_opts(Config) ++ default_dest_opts(),
@@ -98,27 +99,23 @@ user_gpb_opts(Config) ->
 default_dest_opts() ->
     [{o_erl, "src"}, {o_hrl, "include"}].
 
-default_include_opts(Source) ->
+compile_gpb(Source, _Target, Config) ->
     SourceFullPath = filename:absname(Source),
-    [{i,filename:dirname(SourceFullPath)}].
-
-needs_compile(ProtoFile, GpbOpts) ->
-    Erl = erl_file(ProtoFile, GpbOpts),
-    Hrl = hrl_file(ProtoFile, GpbOpts),
-    filelib:last_modified(Erl) < filelib:last_modified(ProtoFile) orelse
-        filelib:last_modified(Hrl) < filelib:last_modified(ProtoFile).
-
-compile_gpb(Source, GpbOpts) ->
-    SourceFullPath = filename:absname(Source),
+    GpbOpts = user_gpb_opts(Config) ++ default_dest_opts()
+        ++ default_include_opts(SourceFullPath),
     ok = filelib:ensure_dir(filename:join("ebin", "dummy")),
     ok = filelib:ensure_dir(filename:join("include", "dummy")),
     case gpb_compile:file(SourceFullPath, GpbOpts) of
         ok ->
             ok;
-        {error, _Reason} ->
-            ?ERROR("Failed to compile ~s~n", [Source]),
+        {error, Reason} ->
+            ReasonStr = gpb_compile:format_error(Reason),
+            ?ERROR("Failed to compile ~s: ~s~n", [SourceFullPath, ReasonStr]),
             ?FAIL
     end.
+
+default_include_opts(SourceFullPath) ->
+    [{i,filename:dirname(SourceFullPath)}].
 
 beam_file(ProtoFile, GpbOpts) ->
     proto_filename_to_path("ebin", ProtoFile, ".beam", GpbOpts).
