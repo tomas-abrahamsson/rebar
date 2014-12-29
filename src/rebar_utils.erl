@@ -34,6 +34,7 @@
          sh_send/3,
          find_files/2,
          find_files/3,
+         find_files_by_ext/3,
          now_str/0,
          ensure_dir/1,
          beam_to_mod/2,
@@ -159,6 +160,11 @@ find_files(Dir, Regex) ->
 find_files(Dir, Regex, Recursive) ->
     filelib:fold_files(Dir, Regex, Recursive,
                        fun(F, Acc) -> [F | Acc] end, []).
+
+find_files_by_ext(Dir, Ext, Recursive) ->
+    %% Convert simple extension to proper regex
+    ExtRe = "^[^._].*\\" ++ Ext ++ [$$],
+    find_files(Dir, ExtRe, Recursive).
 
 now_str() ->
     {{Year, Month, Day}, {Hour, Minute, Second}} = calendar:local_time(),
